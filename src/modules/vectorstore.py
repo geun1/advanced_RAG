@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Sequence, Optional
-import chromadb
+from langchain_community.vectorstores import Chroma
 
 from ..config import settings
 from .utils import ensure_dir
@@ -10,38 +10,35 @@ class ChromaVectorStore(VectorStore):
     def __init__(self, collection_name: Optional[str] = None, embeddings: Optional[Embeddings] = None) -> None:
         self.persist_dir = settings.chroma_persist_dir
         ensure_dir(self.persist_dir)
-        # Chroma 0.5.x에서는 PersistentClient 사용 및 별도 persist() 호출이 필요하지 않음
-        self.client = chromadb.PersistentClient(path=self.persist_dir)
-        self.collection = self.client.get_or_create_collection(
-            name=collection_name or settings.collection_name,
-            metadata={"hnsw:space": "cosine"}
-        )
+        self.collection_name = collection_name or settings.collection_name
         self.embeddings = embeddings
+        # LangChain의 Chroma 래퍼 인스턴스 구성
+        self.store = Chroma(
+            collection_name=self.collection_name,
+            embedding_function=self.embeddings,  # Embeddings Protocol은 LC OpenAIEmbeddings 호환
+            persist_directory=self.persist_dir,
+        )
 
     def add_texts(self, texts: Sequence[str], metadatas: Sequence[Dict[str, Any]]) -> None:
-        ids = [f"doc-{i}-{m.get('chunk_id', i)}" for i, m in enumerate(metadatas)]
-        if self.embeddings is not None:
-            vecs = self.embeddings.embed_documents(texts)
-            self.collection.add(documents=list(texts), embeddings=vecs, metadatas=list(metadatas), ids=ids)
-        else:
-            # 컬렉션에 embedding_function이 설정되어 있어야 함
-            self.collection.add(documents=list(texts), metadatas=list(metadatas), ids=ids)
-        # PersistentClient는 자동 영속화되므로 별도 persist 호출 불필요
+        # 대량 추가 시 OpenAI 임베딩 토큰 한도 초과를 피하기 위해 배치 처리
+        batch_size = 64
+        texts_list = list(texts)
+        metas_list = list(metadatas)
+        for i in range(0, len(texts_list), batch_size):
+            batch_texts = texts_list[i : i + batch_size]
+            batch_metas = metas_list[i : i + batch_size]
+            if not batch_texts:
+                continue
+            self.store.add_texts(texts=batch_texts, metadatas=batch_metas)
+        # persist는 LangChain Chroma가 필요 시 자동 처리하지만 명시적으로 호출
+        try:
+            self.store.persist()
+        except Exception:
+            pass
 
     def similarity_search(self, query: str, k: int) -> List[Document]:
-        if self.embeddings is not None:
-            q = self.embeddings.embed_documents([query])[0]
-            result = self.collection.query(query_embeddings=[q], n_results=k)
-        else:
-            result = self.collection.query(query_texts=[query], n_results=k)
-        docs: List[Document] = []
-        for i in range(len(result["ids"][0])):
-            docs.append(
-                Document(
-                    page_content=result["documents"][0][i],
-                    metadata=result["metadatas"][0][i],
-                )
-            )
-        return docs
+        results = self.store.similarity_search(query, k=k)
+        # 결과는 이미 LangChain Document이므로 그대로 반환
+        return results
 
 

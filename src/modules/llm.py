@@ -1,5 +1,7 @@
 from typing import Sequence, Optional
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 
 from ..config import settings
 from .types import ChatLLM, Document
@@ -14,22 +16,18 @@ SYSTEM_PROMPT = (
 class OpenAIChatLLM(ChatLLM):
     def __init__(self, model: Optional[str] = None) -> None:
         self.model = model or settings.chat_model
-        self.client = OpenAI(api_key=settings.openai_api_key)
+        self.llm = ChatOpenAI(model=self.model, api_key=settings.openai_api_key, temperature=0.2)
+        self.prompt = ChatPromptTemplate.from_messages([
+            ("system", SYSTEM_PROMPT + "\n문맥:\n{context}"),
+            ("human", "질문: {question}"),
+        ])
+        self.parser = StrOutputParser()
 
     def generate(self, question: str, context_docs: Sequence[Document], max_tokens: Optional[int] = None) -> str:
         context_text = "\n\n".join(
             [f"[소스: {d.metadata.get('source','unknown')}]\n{d.page_content}" for d in context_docs]
         )
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"질문:\n{question}\n\n컨텍스트:\n{context_text}"},
-        ]
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_tokens=max_tokens or settings.max_tokens,
-            temperature=0.2,
-        )
-        return response.choices[0].message.content or ""
+        chain = self.prompt | self.llm | self.parser
+        return chain.invoke({"context": context_text, "question": question})
 
 

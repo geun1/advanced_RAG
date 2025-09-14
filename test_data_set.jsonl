@@ -1,0 +1,10 @@
+{"question": "도심항공교통 규칙의 목적은 무엇인가?", "ground_truth_answer": "이 규칙은 도심항공교통 활용 촉진 및 지원에 관한 법률 및 같은 법 시행령에서 위임된 사항과 그 시행에 필요한 사항을 규정함을 목적으로 한다.", "ground_truth_sources": ["HJ_B_014648.csv"]}
+{"question": "버티포트에 필수적으로 설치해야 하는 시설에는 무엇이 있나?", "ground_truth_answer": "버티포트의 필수시설에는 풍향지시기, 버티포트 식별표지가 있다.", "ground_truth_sources": ["HJ_B_014648.csv"]}
+{"question": "시범운용에서 규제특례가 적용되는 업무에는 어떤 것들이 있나?", "ground_truth_answer": "공중광고, 사진 또는 영상 촬영, 산림·관로·전선 등의 순찰, 치안 활동, 도심형항공기사용사업에 따른 업무 등이 규제특례 적용 대상이다.", "ground_truth_sources": ["HJ_B_014648.csv"]}
+{"question": "도심형항공기사용사업의 범위에는 어떤 업무가 포함되나?", "ground_truth_answer": "수색·구조·의료·응급후송, 도심형항공기를 사용하는 비행훈련, 제3조제1호~제4호의 업무, 국토교통부장관이 인정하는 업무가 포함된다.", "ground_truth_sources": ["HJ_B_014648.csv"]}
+{"question": "실증사업구역을 지정한 경우 국토교통부장관이 관보에 고시해야 하는 사항은?", "ground_truth_answer": "실증사업구역의 명칭·위치·범위, 지정목적, 지정 연월일, 지정기간, 기타 필요한 사항을 관보에 고시해야 한다.", "ground_truth_sources": ["HJ_B_014648.csv"]}
+{"question": "국가유산 기본법의 목적은 무엇인가?", "ground_truth_answer": "국가와 지방자치단체의 책임을 명확히 하여 국가유산을 보호하고 창조적으로 계승함으로써 국민의 삶의 질 향상을 도모하는 데 목적이 있다.", "ground_truth_sources": ["HJ_B_014443.csv"]}
+{"question": "국가유산 기본법의 기본이념은 무엇인가?", "ground_truth_answer": "국가유산을 삶의 뿌리이자 창의성의 원천으로 인식하고, 그 가치를 지키고 향유하며 미래 세대에 가치 있게 전하는 것을 기본이념으로 한다.", "ground_truth_sources": ["HJ_B_014443.csv"]}
+{"question": "이 법에서 '국가유산'은 무엇을 의미하나?", "ground_truth_answer": "인위적·자연적으로 형성된 역사적, 예술적, 학술적 또는 경관적 가치가 큰 문화유산, 자연유산, 무형유산을 말한다.", "ground_truth_sources": ["HJ_B_014443.csv"]}
+{"question": "문화유산은 어떻게 정의되나?", "ground_truth_answer": "우리 역사와 전통의 산물로서 문화의 고유성과 정체성을 나타내는 유형의 문화적 유산을 의미한다.", "ground_truth_sources": ["HJ_B_014443.csv"]}
+{"question": "자연유산에는 어떤 것들이 포함되나?", "ground_truth_answer": "지형, 지질, 생태계, 생물종 등 자연적으로 형성된 경관적 가치가 큰 요소들이 포함된다.", "ground_truth_sources": ["HJ_B_014443.csv"]}

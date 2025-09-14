@@ -7,4 +7,15 @@ tiktoken>=0.7.0
 langchain-text-splitters>=0.2.2
 numpy>=1.26.0
 
+# LangChain stack
+langchain>=0.2.12
+langchain-community>=0.2.10
+langchain-openai>=0.1.22
+langsmith>=0.1.88
+
+# Metrics
+sacrebleu>=2.4.2
+rouge-score>=0.1.2
+bert-score>=0.3.13
+
 

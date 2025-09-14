@@ -1,11 +1,5 @@
-from dataclasses import dataclass
 from typing import Any, Dict, List, Protocol, Sequence
-
-
-@dataclass
-class Document:
-    page_content: str
-    metadata: Dict[str, Any]
+from langchain_core.documents import Document
 
 
 class TextSplitter(Protocol):
@@ -15,6 +9,8 @@ class TextSplitter(Protocol):
 
 class Embeddings(Protocol):
     def embed_documents(self, texts: Sequence[str]) -> List[List[float]]:
+        ...
+    def embed_query(self, text: str) -> List[float]:
         ...
 
 
