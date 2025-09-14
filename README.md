@@ -1,4 +1,4 @@
-# Modular Basic RAG (Streamlit + Chroma + OpenAI)
+# Basic RAG (Streamlit + Chroma + OpenAI)
 
 ## Quickstart
 

@@ -1,9 +1,9 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="Modular RAG", page_icon="🧩", layout="wide")
+st.set_page_config(page_title="Basic RAG", page_icon="🧩", layout="wide")
 
-st.title("🧩 Modular Basic RAG")
+st.title("🧩 Basic RAG")
 st.subheader("아키텍처 다이어그램")
 
 diagram_html = """
