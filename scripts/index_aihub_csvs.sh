@@ -36,7 +36,7 @@ import os
 from glob import iglob
 
 from src.modules.loaders import load_file_to_document
-from src.modules.chunking import DefaultTextSplitter
+from src.modules.chunking import LegalCSVSplitter
 from src.modules.embeddings import OpenAIEmbeddings
 from src.modules.vectorstore import ChromaVectorStore
 from src.modules.retriever import SimpleRetriever
@@ -46,8 +46,8 @@ from src.modules.pipeline import RAGPipeline
 PROJECT_ROOT = "/Users/geun1/programming/project/RAG/advanced_RAG"
 DATA_DIR = os.path.join(PROJECT_ROOT, "AI-Hub-data-test/Statutory-Source-Data")
 
-# 컴포넌트 초기화
-splitter = DefaultTextSplitter()
+# 컴포넌트 초기화 (법령 데이터 시멘틱 청크)
+splitter = LegalCSVSplitter()
 embeddings = OpenAIEmbeddings()
 store = ChromaVectorStore(embeddings=embeddings)
 retriever = SimpleRetriever(store)
@@ -61,12 +61,14 @@ if not csv_paths:
 
 docs = []
 for p in csv_paths:
-    meta = {"dataset": "AI-Hub", "basename": os.path.basename(p)}
+    meta = {"dataset": "AI-Hub", "basename": os.path.basename(p), "doc_type": "statute"}
     docs.append(load_file_to_document(p, extra_metadata=meta))
 
 print(f"[INFO] 총 {len(docs)}개 CSV를 문서로 변환했습니다. 청킹/임베딩/저장을 시작합니다...")
 
-stats = pipeline.index_documents(docs)
+from src.modules.tracing import TraceRecorder
+trace = TraceRecorder()
+stats = pipeline.index_documents(docs, trace=trace, splitter_override=splitter)
 print("[DONE] 색인 완료:", stats)
 PY
 

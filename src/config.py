@@ -20,6 +20,15 @@ class Settings:
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "800"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "120"))
 
+    # Rerank settings
+    rerank_enabled: bool = os.getenv("RERANK_ENABLED", "false").lower() in {"1", "true", "yes", "y"}
+    rerank_provider: str = os.getenv("RERANK_PROVIDER", "cohere")
+    rerank_top_n: int = int(os.getenv("RERANK_TOP_N", "4"))
+
+    # Cohere Rerank
+    cohere_api_key: str = os.getenv("COHERE_API_KEY", "")
+    cohere_rerank_model: str = os.getenv("COHERE_RERANK_MODEL", "rerank-multilingual-v3.0")
+
 
 settings = Settings()
 

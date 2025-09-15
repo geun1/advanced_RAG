@@ -6,7 +6,7 @@ import json
 import uuid
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
@@ -76,99 +76,6 @@ if uploaded is not None:
         st.success(f"항목 {len(items)}개 로드")
     except Exception as e:
         st.error(f"데이터셋 파싱 실패: {e}")
-
-run = st.button("평가 실행")
-
-if run:
-    if not items:
-        st.warning("평가 항목이 없습니다. 템플릿을 참고해 데이터셋을 준비하세요.")
-    else:
-        prog_text = st.empty()
-        prog_bar = st.progress(0)
-
-        def on_progress(done: int, total: int) -> None:
-            ratio = 0 if total == 0 else int(done / total * 100)
-            prog_bar.progress(ratio)
-            prog_text.markdown(f"진행 상황: **{done}/{total}**")
-
-        with st.spinner("평가 중..."):
-            results, aggregate = run_evaluation(
-                items=items,
-                retriever=retriever,
-                llm=llm,
-                embeddings=embeddings,
-                top_k=top_k,
-                enable_llm_judge=use_llm_judge,
-                enable_bleu_rouge=use_bleu_rouge,
-                enable_bertscore=use_bertscore,
-                bert_model_type=bert_model_type,
-                progress_callback=on_progress,
-            )
-        prog_bar.progress(100)
-        prog_text.markdown(f"진행 상황: **완료 ({len(items)}/{len(items)})**")
-
-        st.subheader("집계 결과")
-        m1 = aggregate.retrieval_avg
-        m2 = aggregate.generation_avg
-        m3 = aggregate.latency_avg
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.metric("Recall@k", f"{m1.recall_at_k:.3f}")
-            st.metric("Precision@k", f"{m1.precision_at_k:.3f}")
-            st.metric("MRR@k", f"{m1.mrr_at_k:.3f}")
-        with c2:
-            st.metric("Relevance(cos)", f"{(m2.relevance_cosine if m2.relevance_cosine is not None else 0.0):.3f}")
-            if m2.bleu is not None:
-                st.metric("BLEU", f"{m2.bleu:.3f}")
-            if m2.rouge_l is not None:
-                st.metric("ROUGE-L", f"{m2.rouge_l:.3f}")
-            if m2.bertscore_f1 is not None:
-                st.metric("BERTScore-F1", f"{m2.bertscore_f1:.3f}")
-        with c3:
-            st.metric("End-to-End(ms)", f"{m3.end_to_end_ms:.1f}")
-            st.metric("Retriever(ms)", f"{m3.retriever_ms:.1f}")
-            st.metric("Generator(ms)", f"{m3.generator_ms:.1f}")
-        with c4:
-            st.metric("Avg Answer Len", f"{m2.answer_length}")
-            st.metric("Avg GT Len", f"{m2.ground_truth_length}")
-
-        st.subheader("개별 결과")
-        for i, r in enumerate(results, start=1):
-            with st.expander(f"[{i}] {r.question}"):
-                st.markdown("**Answer**")
-                st.write(r.answer)
-                st.markdown("**Retrieved Sources**")
-                st.write(r.retrieved_sources)
-                st.markdown("**Retrieval**")
-                st.json({
-                    "recall@k": r.retrieval.recall_at_k,
-                    "precision@k": r.retrieval.precision_at_k,
-                    "mrr@k": r.retrieval.mrr_at_k,
-                })
-                st.markdown("**Generation**")
-                st.json({
-                    "relevance_cosine": r.generation.relevance_cosine,
-                    "bleu": r.generation.bleu,
-                    "rouge_l": r.generation.rouge_l,
-                    "bertscore_f1": r.generation.bertscore_f1,
-                    "faithfulness_judgement": r.generation.faithfulness_judgement,
-                    "answer_length": r.generation.answer_length,
-                })
-                st.markdown("**Latency (ms)**")
-                st.json({
-                    "e2e": r.latency.end_to_end_ms,
-                    "retriever": r.latency.retriever_ms,
-                    "generator": r.latency.generator_ms,
-                })
-
-        st.subheader("리포트 내보내기")
-        report = to_json_report(results, aggregate)
-        st.download_button(
-            label="JSON 다운로드",
-            data=report.encode("utf-8"),
-            file_name="rag_eval_report.json",
-            mime="application/json",
-        )
 
 # =============================
 # 백그라운드 평가 관리자
@@ -302,6 +209,7 @@ class EvalManager:
                     stop_check=stop_check,
                 )
                 (run_path / "aggregate.json").write_text(json.dumps({
+                    "config": params,
                     "num_items": aggregate.num_items,
                     "retrieval_avg": {
                         "recall_at_k": aggregate.retrieval_avg.recall_at_k,
@@ -355,13 +263,38 @@ mngr = get_eval_manager()
 
 bg_items = items  # 업로드한 동일 items 재사용
 if bg_items:
-    if st.button("백그라운드 평가 시작"):
+    # 항상 백그라운드 실행
+    if st.button("평가 실행"):
+        # 실행 시점 설정 수집
+        from src.modules.llm import OpenAIChatLLM
+        from src.modules.embeddings import OpenAIEmbeddings
+        from src.modules.vectorstore import ChromaVectorStore
+        from src.config import settings as _s
+        # Rerank 설정
+        rerank_enabled = bool(_s.rerank_enabled)
+        rerank_top_n = int(_s.rerank_top_n)
+        rerank_provider = str(_s.rerank_provider)
+        rerank_model = None
+        if rerank_provider == "cohere":
+            rerank_model = getattr(_s, "cohere_rerank_model", None)
+
         params = {
             "top_k": top_k,
+            "max_tokens": _s.max_tokens,
             "use_llm_judge": use_llm_judge,
             "use_bleu_rouge": use_bleu_rouge,
             "use_bertscore": use_bertscore,
             "bert_model_type": bert_model_type,
+            # 구성 정보
+            "chat_model": getattr(llm, "model", None),
+            "embedding_model": getattr(embeddings, "model", None),
+            "vectorstore": "Chroma",
+            "vectorstore_collection": getattr(settings, "collection_name", None),
+            "rerank_enabled": rerank_enabled,
+            "rerank_top_n": rerank_top_n,
+            "rerank_provider": rerank_provider,
+            "rerank_model": rerank_model,
+            "retriever": "SimpleRetriever",
         }
         run_id = mngr.start(bg_items, params)
         st.success(f"백그라운드 실행 시작: {run_id}")
@@ -398,16 +331,15 @@ else:
             if st.button("중지", key=f"stop-{rk}"):
                 st.session_state[f"confirm_stop_{rk}"] = True
             if st.session_state.get(f"confirm_stop_{rk}"):
-                with st.popover("정말 중지할까요?", key=f"pop-{rk}"):
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        if st.button("확인", key=f"ok-{rk}"):
-                            mngr.stop(rk)
-                            st.session_state[f"confirm_stop_{rk}"] = False
-                            st.rerun()
-                    with c2:
-                        if st.button("취소", key=f"cancel-{rk}"):
-                            st.session_state[f"confirm_stop_{rk}"] = False
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("확인", key=f"ok-{rk}"):
+                        mngr.stop(rk)
+                        st.session_state[f"confirm_stop_{rk}"] = False
+                        st.rerun()
+                with c2:
+                    if st.button("취소", key=f"cancel-{rk}"):
+                        st.session_state[f"confirm_stop_{rk}"] = False
         with cols[4]:
             st.write(r.get("status"))
 
@@ -417,19 +349,80 @@ if not history:
     st.write("기록이 없습니다.")
 else:
     for r in history[:20]:
-        with st.expander(f"{r.get('run_id')} · {r.get('status')}"):
-            run_dir = RUNS_DIR / r.get("run_id")
+        run_id = r.get('run_id')
+        status_label = r.get('status')
+        with st.expander(f"{run_id} · {status_label}"):
+            run_dir = RUNS_DIR / run_id
             agg_path = run_dir / "aggregate.json"
             res_path = run_dir / "results.jsonl"
+            status_path = run_dir / "status.json"
+
+            # 한국시간 표시
+            started_at_kst = None
+            finished_at_kst = None
+            duration_text = None
+            try:
+                if status_path.exists():
+                    sdata = json.loads(status_path.read_text(encoding="utf-8"))
+                    s = sdata.get("started_at")
+                    f = sdata.get("finished_at")
+                    def to_kst(ts: str):
+                        try:
+                            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                            return dt.astimezone(timezone(timedelta(hours=9)))
+                        except Exception:
+                            return None
+                    sdt = to_kst(s) if s else None
+                    fdt = to_kst(f) if f else None
+                    if sdt:
+                        started_at_kst = sdt.strftime("%Y-%m-%d %H:%M:%S KST")
+                    if fdt:
+                        finished_at_kst = fdt.strftime("%Y-%m-%d %H:%M:%S KST")
+                    if sdt and fdt:
+                        delta = fdt - sdt
+                        secs = int(delta.total_seconds())
+                        mins, secs = divmod(secs, 60)
+                        hrs, mins = divmod(mins, 60)
+                        duration_text = f"{hrs:02d}:{mins:02d}:{secs:02d}"
+            except Exception:
+                pass
+
+            info_cols = st.columns(3)
+            with info_cols[0]:
+                st.write(f"시작: {started_at_kst or '-'}")
+            with info_cols[1]:
+                st.write(f"종료: {finished_at_kst or '-'}")
+            with info_cols[2]:
+                st.write(f"경과: {duration_text or '-'}")
+
+            st.divider()
             if agg_path.exists():
+                st.markdown("집계 결과")
                 st.json(json.loads(agg_path.read_text(encoding="utf-8")))
+
             if res_path.exists():
                 st.download_button(
                     label="JSONL 다운로드",
                     data=res_path.read_bytes(),
-                    file_name=f"{r.get('run_id')}-results.jsonl",
+                    file_name=f"{run_id}-results.jsonl",
                     mime="application/json",
-                    key=f"dlbtn-{r.get('run_id')}"
+                    key=f"dlbtn-{run_id}"
                 )
+
+            # 메모 유지 기능
+            memo_path = run_dir / "memo.txt"
+            existing_memo = ""
+            try:
+                if memo_path.exists():
+                    existing_memo = memo_path.read_text(encoding="utf-8")
+            except Exception:
+                pass
+            memo = st.text_area("메모", value=existing_memo, key=f"memo-{run_id}")
+            if st.button("메모 저장", key=f"save-memo-{run_id}"):
+                try:
+                    memo_path.write_text(memo or "", encoding="utf-8")
+                    st.success("메모를 저장했습니다.")
+                except Exception as e:
+                    st.error(f"메모 저장 실패: {e}")
 
 

@@ -9,7 +9,7 @@ if str(BASE_DIR) not in sys.path:
 
 from src.config import settings
 from src.modules.loaders import load_file_to_document
-from src.modules.chunking import DefaultTextSplitter
+from src.modules.chunking import DefaultTextSplitter, LegalCSVSplitter
 from src.modules.embeddings import OpenAIEmbeddings
 from src.modules.vectorstore import ChromaVectorStore
 from src.modules.retriever import SimpleRetriever
@@ -25,15 +25,15 @@ docs_dir = os.path.abspath(os.path.join("data", "docs"))
 ensure_dir(docs_dir)
 
 @st.cache_resource(show_spinner=False)
-def get_pipeline() -> RAGPipeline:
-    splitter = DefaultTextSplitter()
+def get_components():
     embeddings = OpenAIEmbeddings()
     store = ChromaVectorStore(embeddings=embeddings)
     retriever = SimpleRetriever(store)
     llm = OpenAIChatLLM()
-    return RAGPipeline(splitter, embeddings, store, retriever, llm)
+    return embeddings, store, retriever, llm
 
-pipeline = get_pipeline()
+embeddings, store, retriever, llm = get_components()
+pipeline = RAGPipeline(DefaultTextSplitter(), embeddings, store, retriever, llm)
 
 uploaded_files = st.file_uploader("문서 업로드 (txt, md, pdf 등)", accept_multiple_files=True)
 if uploaded_files:
@@ -45,12 +45,18 @@ if uploaded_files:
         saved_paths.append(save_path)
     st.success(f"{len(saved_paths)}개 파일 저장 완료")
 
+is_statute = st.checkbox("법령 데이터(조·항·호·목 기준 시멘틱 청크)", value=False)
+
 if st.button("색인하기"):
     files = [os.path.join(docs_dir, name) for name in os.listdir(docs_dir)]
     docs = [load_file_to_document(p, {"uploaded": "true"}) for p in files]
+    if is_statute:
+        for d in docs:
+            d.metadata["doc_type"] = "statute"
     trace = TraceRecorder()
     with st.spinner("청킹 및 벡터DB 반영 중..."):
-        stats = pipeline.index_documents(docs, trace=trace)
+        chosen_splitter = LegalCSVSplitter() if is_statute else DefaultTextSplitter()
+        stats = pipeline.index_documents(docs, trace=trace, splitter_override=chosen_splitter)
     st.success(f"색인 완료. 총 청크 수: {stats['total_chunks']}")
     with st.expander("단계 트레이스 보기"):
         for e in trace.as_dicts():

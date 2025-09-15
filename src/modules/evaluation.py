@@ -430,8 +430,9 @@ def _to_eval_item(obj: Dict[str, Any]) -> EvalItem:
     return EvalItem(question=q, ground_truth_answer=gt_a, ground_truth_sources=sources)
 
 
-def to_json_report(results: Sequence[PerItemResult], aggregate: AggregateResult) -> str:
+def to_json_report(results: Sequence[PerItemResult], aggregate: AggregateResult, config: Optional[Dict[str, Any]] = None) -> str:
     data = {
+        "config": config or {},
         "aggregate": {
             "num_items": aggregate.num_items,
             "retrieval_avg": asdict(aggregate.retrieval_avg),
