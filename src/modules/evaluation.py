@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Callable
 
 from .types import Document
 
@@ -232,6 +232,9 @@ def run_evaluation(
     enable_bleu_rouge: bool = True,
     enable_bertscore: bool = False,
     bert_model_type: str = "xlm-roberta-large",
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+    stop_check: Optional[Callable[[], bool]] = None,
+    on_item_result: Optional[Callable[[PerItemResult, int, int], None]] = None,
 ) -> Tuple[List[PerItemResult], AggregateResult]:
     results: List[PerItemResult] = []
 
@@ -253,7 +256,16 @@ def run_evaluation(
     agg_ans_len = 0
     agg_gt_len = 0
 
-    for it in items:
+    total = len(items)
+    if progress_callback is not None:
+        try:
+            progress_callback(0, total)
+        except Exception:
+            pass
+
+    for idx, it in enumerate(items, start=1):
+        if stop_check is not None and stop_check():
+            break
         t0 = time.perf_counter()
 
         # Retrieval
@@ -292,17 +304,21 @@ def run_evaluation(
             generator_ms=(tg1 - tg0) * 1000.0,
         )
 
-        results.append(
-            PerItemResult(
-                question=it.question,
-                answer=answer,
-                retrieved_sources=retrieved_sources,
-                retrieval=r_metrics,
-                generation=g_metrics,
-                latency=lat,
-                meta={"gt_sources": it.ground_truth_sources},
-            )
+        per = PerItemResult(
+            question=it.question,
+            answer=answer,
+            retrieved_sources=retrieved_sources,
+            retrieval=r_metrics,
+            generation=g_metrics,
+            latency=lat,
+            meta={"gt_sources": it.ground_truth_sources},
         )
+        results.append(per)
+        if on_item_result is not None:
+            try:
+                on_item_result(per, idx, total)
+            except Exception:
+                pass
 
         agg_recall += r_metrics.recall_at_k
         agg_precision += r_metrics.precision_at_k
@@ -324,6 +340,12 @@ def run_evaluation(
         agg_gen += lat.generator_ms
         agg_ans_len += g_metrics.answer_length
         agg_gt_len += g_metrics.ground_truth_length
+
+        if progress_callback is not None:
+            try:
+                progress_callback(idx, total)
+            except Exception:
+                pass
 
     n = max(1, len(items))
     retrieval_avg = RetrievalMetrics(

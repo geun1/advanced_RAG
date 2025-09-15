@@ -3,7 +3,7 @@ set -euo pipefail
 
 # 프로젝트 루트와 데이터 디렉터리(절대 경로)
 PROJECT_ROOT="/Users/geun1/programming/project/RAG/advanced_RAG"
-DATA_DIR="$PROJECT_ROOT/AI-Hub-data-test"
+DATA_DIR="$PROJECT_ROOT/AI-Hub-data-test/Statutory-Source-Data"
 
 # .env 자동 로드(있으면)
 if [[ -f "$PROJECT_ROOT/.env" ]]; then
@@ -25,6 +25,7 @@ if [[ ! -d "$DATA_DIR" ]]; then
   exit 1
 fi
 
+
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
 cd "$PROJECT_ROOT"
 
@@ -43,7 +44,7 @@ from src.modules.llm import OpenAIChatLLM
 from src.modules.pipeline import RAGPipeline
 
 PROJECT_ROOT = "/Users/geun1/programming/project/RAG/advanced_RAG"
-DATA_DIR = os.path.join(PROJECT_ROOT, "AI-Hub-data-test")
+DATA_DIR = os.path.join(PROJECT_ROOT, "AI-Hub-data-test/Statutory-Source-Data")
 
 # 컴포넌트 초기화
 splitter = DefaultTextSplitter()

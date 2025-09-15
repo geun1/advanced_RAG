@@ -73,6 +73,53 @@ streamlit run app/Home.py
 - 사이드바에서 Admin 페이지 이동 → 파일 업로드 → "색인하기" 클릭
 - Chat 페이지에서 질문하고, 참조 문서/단계 트레이스 확인
 
+## 데이터셋 설정 (AI-Hub)
+
+- 본 레포는 용량 문제로 AI-Hub 데이터가 커밋되지 않습니다(`.gitignore`로 제외).
+- 아래 구글 드라이브에서 데이터를 직접 다운로드 받아 프로젝트 폴더에 배치하세요.
+  - 다운로드 링크: [AI-Hub Statutory 데이터](https://drive.google.com/drive/folders/11Fx-LF5yGEDhfrX7gfL8oua0cTlpBCT2?usp=sharing)
+- 권장 폴더 구조:
+```
+AI-Hub-data-test/
+  Statutory-Source-Data/    # 원천 CSV 모음
+  Statutory-QA-Data/        # QA JSON 모음 (HJ_B_{lawId}_QA_{num}.json)
+```
+- 색인과 평가용 GT 생성은 아래 스크립트로 수행합니다.
+  - CSV 인덱싱(청킹→임베딩→Chroma 저장):
+    ```bash
+    scripts/index_aihub_csvs.sh
+    ```
+  - QA → 평가용 JSONL 생성(기본 150개 샘플):
+    ```bash
+    scripts/build_ground_truth_jsonl.sh  \
+      AI-Hub-data-test/Statutory-QA-Data  \
+      test_data_set.jsonl  \
+      150
+    ```
+
+## 성능 측정(평가) 사용법
+
+- 앱 실행 후 좌측 페이지에서 "📈 RAG Evaluation"으로 이동합니다.
+- 데이터셋 업로드: `csv/json/jsonl` 지원
+  - 필수: `question`
+  - 선택: `ground_truth_answer`, `ground_truth_sources`
+- 옵션
+  - Top-K, LLM 판사 사용, BLEU/ROUGE, BERTScore(무거움) 토글 제공
+  - BERTScore 모델은 기본 `xlm-roberta-large`(ko)
+- 실행
+  - 진행률 표시: 총 N개 중 M개 처리됨이 실시간 갱신됩니다.
+  - 결과: 집계 지표(Recall/Precision/MRR, Relevance, BLEU, ROUGE-L, BERTScore-F1, Latency)와 항목별 상세, JSON 리포트 다운로드 제공
+
+### 백그라운드 평가와 재개
+
+- 업로드한 항목으로 "백그라운드 평가 시작"을 누르면 앱을 떠나도 계속 수행됩니다.
+- 상태/결과는 `data/eval_runs/<run_id>/`에 저장되어 페이지를 벗어나도 유지됩니다.
+  - `status.json`: 진행 상태(done/total, 상태값)
+  - `results.jsonl`: 항목별 결과 스트리밍 저장
+  - `aggregate.json`: 최종 집계 결과
+- 실행 중 목록에서 진행률을 확인하고 "중지"를 누르면 확인 팝업 후 안전하게 중단합니다(중지 신호 파일 `STOP`도 기록).
+- 과거 실행 기록에서 결과 JSONL을 다시 내려받을 수 있습니다.
+
 ## 구조
 ```
 app/
@@ -97,6 +144,7 @@ src/
 data/
   docs/           # 업로드 문서 저장
   chroma/         # Chroma 영속 저장소
+scripts/          # 배치 스크립트 모음
 ```
 
 ## Notes
