@@ -208,7 +208,7 @@ class EvalManager:
                     on_item_result=on_item,
                     stop_check=stop_check,
                 )
-                (run_path / "aggregate.json").write_text(json.dumps({
+                agg_obj = {
                     "config": params,
                     "num_items": aggregate.num_items,
                     "retrieval_avg": {
@@ -229,7 +229,14 @@ class EvalManager:
                         "retriever_ms": aggregate.latency_avg.retriever_ms,
                         "generator_ms": aggregate.latency_avg.generator_ms,
                     },
-                }, ensure_ascii=False, indent=2), encoding="utf-8")
+                }
+                # 타입별 집계가 있으면 포함
+                try:
+                    if getattr(aggregate, "per_type", None):
+                        agg_obj["per_type"] = aggregate.per_type
+                except Exception:
+                    pass
+                (run_path / "aggregate.json").write_text(json.dumps(agg_obj, ensure_ascii=False, indent=2), encoding="utf-8")
                 status = {
                     "run_id": run_id,
                     "status": "completed" if not stop_check() else "stopped",
@@ -398,7 +405,89 @@ else:
             st.divider()
             if agg_path.exists():
                 st.markdown("집계 결과")
-                st.json(json.loads(agg_path.read_text(encoding="utf-8")))
+                agg_json = json.loads(agg_path.read_text(encoding="utf-8"))
+                st.json(agg_json)
+
+                # =============================
+                # 시각화: 전체 + 타입별 차트
+                # =============================
+                try:
+                    # 1) 전체(ALL) 데이터 수집
+                    overall_rows = []
+                    agg_root = agg_json
+                    # 호환: to_json_report 포맷 대비
+                    agg_block = agg_root.get("aggregate", agg_root)
+                    ret = agg_block.get("retrieval_avg", {})
+                    gen = agg_block.get("generation_avg", {})
+                    lat = agg_block.get("latency_avg", {})
+                    for k, v in ret.items():
+                        if v is None:
+                            continue
+                        overall_rows.append({"type": "ALL", "metric": k, "value": v, "group": "retrieval"})
+                    for k in ["relevance_cosine", "bleu", "rouge_l", "bertscore_f1"]:
+                        v = gen.get(k, None)
+                        if v is None:
+                            continue
+                        overall_rows.append({"type": "ALL", "metric": k, "value": v, "group": "generation"})
+                    for k, v in lat.items():
+                        if v is None:
+                            continue
+                        overall_rows.append({"type": "ALL", "metric": k, "value": v, "group": "latency"})
+
+                    # 2) 타입별 데이터 수집
+                    per_type = agg_root.get("per_type") or agg_block.get("per_type") or {}
+                    type_rows = []
+                    if isinstance(per_type, dict):
+                        for tname, pdata in per_type.items():
+                            pret = pdata.get("retrieval_avg", {})
+                            pgen = pdata.get("generation_avg", {})
+                            plat = pdata.get("latency_avg", {})
+                            for k, v in pret.items():
+                                if v is None:
+                                    continue
+                                type_rows.append({"type": tname, "metric": k, "value": v, "group": "retrieval"})
+                            for k in ["relevance_cosine", "bleu", "rouge_l", "bertscore_f1"]:
+                                v = pgen.get(k, None)
+                                if v is None:
+                                    continue
+                                type_rows.append({"type": tname, "metric": k, "value": v, "group": "generation"})
+                            for k, v in plat.items():
+                                if v is None:
+                                    continue
+                                type_rows.append({"type": tname, "metric": k, "value": v, "group": "latency"})
+
+                    # 3) 차트 렌더링
+                    st.markdown("#### 차트")
+                    import math
+                    def render_group(title: str, group_key: str, unit: str = ""):
+                        data = [*overall_rows, *type_rows]
+                        data = [d for d in data if d.get("group") == group_key]
+                        if not data:
+                            return
+                        # Vega-Lite 사양
+                        spec = {
+                            "data": {"values": data},
+                            "mark": "bar",
+                            "encoding": {
+                                "x": {"field": "type", "type": "nominal"},
+                                "xOffset": {"field": "metric", "type": "nominal"},
+                                "y": {"field": "value", "type": "quantitative", "stack": None},
+                                "color": {"field": "metric", "type": "nominal"},
+                                "tooltip": [
+                                    {"field": "type", "type": "nominal"},
+                                    {"field": "metric", "type": "nominal"},
+                                    {"field": "value", "type": "quantitative"},
+                                ],
+                            },
+                        }
+                        st.caption(title)
+                        st.vega_lite_chart(spec, use_container_width=True)
+
+                    render_group("Retrieval (전체+타입별)", "retrieval")
+                    render_group("Generation (전체+타입별)", "generation")
+                    render_group("Latency ms (전체+타입별)", "latency")
+                except Exception as e:
+                    st.warning(f"차트 렌더링 실패: {e}")
 
             if res_path.exists():
                 st.download_button(

@@ -13,6 +13,7 @@ class EvalItem:
     question: str
     ground_truth_answer: Optional[str]
     ground_truth_sources: List[str]
+    type: Optional[str] = None
 
 
 @dataclass
@@ -57,6 +58,7 @@ class AggregateResult:
     retrieval_avg: RetrievalMetrics
     generation_avg: GenerationMetrics
     latency_avg: LatencyMetrics
+    per_type: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 def _cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
@@ -257,6 +259,9 @@ def run_evaluation(
     agg_gt_len = 0
 
     total = len(items)
+
+    # 타입별 집계 버퍼
+    type_buf: Dict[str, Dict[str, Any]] = {}
     if progress_callback is not None:
         try:
             progress_callback(0, total)
@@ -311,7 +316,7 @@ def run_evaluation(
             retrieval=r_metrics,
             generation=g_metrics,
             latency=lat,
-            meta={"gt_sources": it.ground_truth_sources},
+            meta={"gt_sources": it.ground_truth_sources, "type": getattr(it, "type", None)},
         )
         results.append(per)
         if on_item_result is not None:
@@ -341,6 +346,50 @@ def run_evaluation(
         agg_ans_len += g_metrics.answer_length
         agg_gt_len += g_metrics.ground_truth_length
 
+        # 타입별 누적 (type이 있는 항목만)
+        tkey = getattr(it, "type", None)
+        if tkey:
+            buf = type_buf.setdefault(tkey, {
+                "count": 0,
+                "recall": 0.0,
+                "precision": 0.0,
+                "mrr": 0.0,
+                "rel": 0.0,
+                "num_rel": 0,
+                "bleu": 0.0,
+                "num_bleu": 0,
+                "rouge": 0.0,
+                "num_rouge": 0,
+                "bert": 0.0,
+                "num_bert": 0,
+                "e2e": 0.0,
+                "ret": 0.0,
+                "gen": 0.0,
+                "ans_len": 0,
+                "gt_len": 0,
+            })
+            buf["count"] += 1
+            buf["recall"] += r_metrics.recall_at_k
+            buf["precision"] += r_metrics.precision_at_k
+            buf["mrr"] += r_metrics.mrr_at_k
+            if g_metrics.relevance_cosine is not None:
+                buf["rel"] += g_metrics.relevance_cosine
+                buf["num_rel"] += 1
+            if g_metrics.bleu is not None:
+                buf["bleu"] += g_metrics.bleu
+                buf["num_bleu"] += 1
+            if g_metrics.rouge_l is not None:
+                buf["rouge"] += g_metrics.rouge_l
+                buf["num_rouge"] += 1
+            if g_metrics.bertscore_f1 is not None:
+                buf["bert"] += g_metrics.bertscore_f1
+                buf["num_bert"] += 1
+            buf["e2e"] += lat.end_to_end_ms
+            buf["ret"] += lat.retriever_ms
+            buf["gen"] += lat.generator_ms
+            buf["ans_len"] += g_metrics.answer_length
+            buf["gt_len"] += g_metrics.ground_truth_length
+
         if progress_callback is not None:
             try:
                 progress_callback(idx, total)
@@ -368,11 +417,42 @@ def run_evaluation(
         generator_ms=agg_gen / n,
     )
 
+    # 타입별 평균 산출
+    per_type_out: Dict[str, Dict[str, Any]] = {}
+    for tkey, buf in type_buf.items():
+        cnt = max(1, int(buf.get("count", 0)))
+        retrieval_avg = RetrievalMetrics(
+            recall_at_k=buf["recall"] / cnt,
+            precision_at_k=buf["precision"] / cnt,
+            mrr_at_k=buf["mrr"] / cnt,
+        )
+        generation_avg = GenerationMetrics(
+            relevance_cosine=(buf["rel"] / buf["num_rel"]) if buf["num_rel"] > 0 else None,
+            bleu=(buf["bleu"] / buf["num_bleu"]) if buf["num_bleu"] > 0 else None,
+            rouge_l=(buf["rouge"] / buf["num_rouge"]) if buf["num_rouge"] > 0 else None,
+            bertscore_f1=(buf["bert"] / buf["num_bert"]) if buf["num_bert"] > 0 else None,
+            answer_length=int(buf["ans_len"] / cnt),
+            ground_truth_length=int(buf["gt_len"] / cnt),
+            faithfulness_judgement=None,
+        )
+        latency_avg = LatencyMetrics(
+            end_to_end_ms=buf["e2e"] / cnt,
+            retriever_ms=buf["ret"] / cnt,
+            generator_ms=buf["gen"] / cnt,
+        )
+        per_type_out[tkey] = {
+            "num_items": int(buf["count"]),
+            "retrieval_avg": asdict(retrieval_avg),
+            "generation_avg": asdict(generation_avg),
+            "latency_avg": asdict(latency_avg),
+        }
+
     aggregate = AggregateResult(
         num_items=len(items),
         retrieval_avg=retrieval_avg,
         generation_avg=generation_avg,
         latency_avg=latency_avg,
+        per_type=per_type_out or None,
     )
 
     return results, aggregate
@@ -427,7 +507,10 @@ def _to_eval_item(obj: Dict[str, Any]) -> EvalItem:
         # 세미콜론/쉼표 구분 문자열 허용
         parts = [p.strip() for p in raw_src.replace(";", ",").split(",")]
         sources = [p for p in parts if p]
-    return EvalItem(question=q, ground_truth_answer=gt_a, ground_truth_sources=sources)
+    t = obj.get("type")
+    if t is not None:
+        t = str(t).strip() or None
+    return EvalItem(question=q, ground_truth_answer=gt_a, ground_truth_sources=sources, type=t)
 
 
 def to_json_report(results: Sequence[PerItemResult], aggregate: AggregateResult, config: Optional[Dict[str, Any]] = None) -> str:
@@ -452,6 +535,8 @@ def to_json_report(results: Sequence[PerItemResult], aggregate: AggregateResult,
             for r in results
         ],
     }
+    if aggregate.per_type:
+        data["aggregate"]["per_type"] = aggregate.per_type
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 

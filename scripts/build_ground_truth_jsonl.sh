@@ -6,6 +6,47 @@ PROJECT_ROOT="/Users/geun1/programming/project/RAG/advanced_RAG"
 QA_DIR_DEFAULT="$PROJECT_ROOT/AI-Hub-data-test/Statutory-QA-Data"
 OUTPUT_DEFAULT="$PROJECT_ROOT/test_data_set.jsonl"
 
+if [[ "${1:-}" == "--from-llm" ]]; then
+  shift
+  DOCS_DIR_DEFAULT="$PROJECT_ROOT/AI-Hub-data-test/Statutory-Source-Data"
+  DOCS_DIR="${DOCS_DIR:-$DOCS_DIR_DEFAULT}"
+  OUTPUT_JSONL="${OUTPUT_JSONL:-$OUTPUT_DEFAULT}"
+  COUNT_PER_FILE="${COUNT_PER_FILE:-8}"
+  TYPES_DEFAULT="simple,multihop,conditional,case,summary,cross,paraphrase"
+  TYPES="${TYPES:-$TYPES_DEFAULT}"
+  TYPE_COUNTS="${TYPE_COUNTS:-}"
+  MODEL="${MODEL:-${CHAT_MODEL:-}}"
+  MAX_CHARS_PER_DOC="${MAX_CHARS_PER_DOC:-12000}"
+  MAX_CROSS_NEIGHBORS="${MAX_CROSS_NEIGHBORS:-1}"
+  DRY_RUN_FLAG="${DRY_RUN:-}"
+
+  cmd=(python3 "$PROJECT_ROOT/scripts/generate_test_dataset.py" \
+    --docs-dir "$DOCS_DIR" \
+    --output "$OUTPUT_JSONL" \
+    --count-per-file "$COUNT_PER_FILE" \
+    --types "$TYPES" \
+    --max-chars-per-doc "$MAX_CHARS_PER_DOC" \
+    --max-cross-neighbors "$MAX_CROSS_NEIGHBORS")
+
+  if [[ -n "$TYPE_COUNTS" ]]; then
+    cmd+=(--type-counts "$TYPE_COUNTS")
+  fi
+  if [[ -n "$MODEL" ]]; then
+    cmd+=(--model "$MODEL")
+  fi
+  if [[ -n "$DRY_RUN_FLAG" ]]; then
+    cmd+=(--dry-run)
+  fi
+
+  if [[ $# -gt 0 ]]; then
+    cmd+=("$@")
+  fi
+
+  echo "[INFO] LLM 기반 데이터셋 생성 실행:" "${cmd[@]}"
+  "${cmd[@]}"
+  exit 0
+fi
+
 QA_DIR="${1:-$QA_DIR_DEFAULT}"
 OUTPUT_JSONL="${2:-$OUTPUT_DEFAULT}"
 MAX_ITEMS="${3:-150}"
