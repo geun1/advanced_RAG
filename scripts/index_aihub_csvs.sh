@@ -38,8 +38,8 @@ from glob import iglob
 from src.modules.loaders import load_file_to_document
 from src.modules.chunking import LegalCSVSplitter
 from src.modules.embeddings import OpenAIEmbeddings
-from src.modules.vectorstore import ChromaVectorStore
-from src.modules.retriever import SimpleRetriever
+from src.modules.vectorstore import ChromaVectorStore, ElasticVectorStore, CompositeVectorStore
+from src.modules.retriever import HybridRetriever
 from src.modules.llm import OpenAIChatLLM
 from src.modules.pipeline import RAGPipeline
 
@@ -49,8 +49,10 @@ DATA_DIR = os.path.join(PROJECT_ROOT, "AI-Hub-data-test/Statutory-Source-Data")
 # 컴포넌트 초기화 (법령 데이터 시멘틱 청크)
 splitter = LegalCSVSplitter()
 embeddings = OpenAIEmbeddings()
-store = ChromaVectorStore(embeddings=embeddings)
-retriever = SimpleRetriever(store)
+dense = ChromaVectorStore(embeddings=embeddings)
+sparse = ElasticVectorStore()
+store = CompositeVectorStore([dense, sparse])
+retriever = HybridRetriever(dense_store=dense, sparse_store=sparse)
 llm = OpenAIChatLLM()
 pipeline = RAGPipeline(splitter, embeddings, store, retriever, llm)
 

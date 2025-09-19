@@ -10,8 +10,8 @@ if str(BASE_DIR) not in sys.path:
 from src.config import settings
 from src.modules.chunking import DefaultTextSplitter
 from src.modules.embeddings import OpenAIEmbeddings
-from src.modules.vectorstore import ChromaVectorStore
-from src.modules.retriever import SimpleRetriever
+from src.modules.vectorstore import ChromaVectorStore, ElasticVectorStore, CompositeVectorStore
+from src.modules.retriever import SimpleRetriever, HybridRetriever
 from src.modules.llm import OpenAIChatLLM
 from src.modules.pipeline import RAGPipeline
 from src.modules.tracing import TraceRecorder
@@ -26,8 +26,11 @@ if not settings.openai_api_key:
 def get_pipeline() -> RAGPipeline:
     splitter = DefaultTextSplitter()
     embeddings = OpenAIEmbeddings()
-    store = ChromaVectorStore(embeddings=embeddings)
-    retriever = SimpleRetriever(store)
+    dense = ChromaVectorStore(embeddings=embeddings)
+    sparse = ElasticVectorStore()
+    store = CompositeVectorStore([dense, sparse])
+    # ES 미사용/미가용 시 HybridRetriever가 자동 폴백
+    retriever = HybridRetriever(dense_store=dense, sparse_store=sparse)
     llm = OpenAIChatLLM()
     return RAGPipeline(splitter, embeddings, store, retriever, llm)
 

@@ -21,4 +21,6 @@ bert-score>=0.3.13
 # Rerank providers
 cohere>=5.5.8
 
-
+# Elasticsearch Python client
+# 8.x 클러스터 호환을 위해 v9가 아닌 8.x로 고정 (v9는 compatible-with=9 헤더로 8.x와 충돌)
+elasticsearch>=8,<9

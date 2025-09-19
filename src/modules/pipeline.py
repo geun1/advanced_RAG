@@ -72,6 +72,13 @@ class RAGPipeline:
         trace = trace or TraceRecorder()
         trace.add("retrieval:start", query=question)
         docs = self.retriever.get_relevant_documents(question, k or settings.top_k)
+        # 리트리버 디버그(하이브리드 여부/ES 상태) 기록
+        try:
+            debug = getattr(self.retriever, "last_debug", None)
+            if isinstance(debug, dict) and debug:
+                trace.add("retrieval:debug", **debug)  # type: ignore[arg-type]
+        except Exception:
+            pass
         trace.add("retrieval:done", num_docs=len(docs))
         # Rerank (optional)
         if settings.rerank_enabled and docs:

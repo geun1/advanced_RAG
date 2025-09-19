@@ -29,6 +29,13 @@ class Settings:
     cohere_api_key: str = os.getenv("COHERE_API_KEY", "")
     cohere_rerank_model: str = os.getenv("COHERE_RERANK_MODEL", "rerank-multilingual-v3.0")
 
+    # Elasticsearch (Sparse) settings
+    elastic_host: str = os.getenv("ELASTIC_HOST", "http://localhost:9200")
+    elastic_index: str = os.getenv("ELASTIC_INDEX", "docs")
+    elastic_username: str = os.getenv("ELASTIC_USERNAME", "")
+    elastic_password: str = os.getenv("ELASTIC_PASSWORD", "")
+    elastic_verify_certs: bool = os.getenv("ELASTIC_VERIFY_CERTS", "true").lower() in {"1", "true", "yes", "y"}
+
 
 settings = Settings()
 

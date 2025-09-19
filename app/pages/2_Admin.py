@@ -11,8 +11,8 @@ from src.config import settings
 from src.modules.loaders import load_file_to_document
 from src.modules.chunking import DefaultTextSplitter, LegalCSVSplitter
 from src.modules.embeddings import OpenAIEmbeddings
-from src.modules.vectorstore import ChromaVectorStore
-from src.modules.retriever import SimpleRetriever
+from src.modules.vectorstore import ChromaVectorStore, ElasticVectorStore, CompositeVectorStore
+from src.modules.retriever import SimpleRetriever, HybridRetriever
 from src.modules.llm import OpenAIChatLLM
 from src.modules.pipeline import RAGPipeline
 from src.modules.utils import ensure_dir
@@ -27,8 +27,10 @@ ensure_dir(docs_dir)
 @st.cache_resource(show_spinner=False)
 def get_components():
     embeddings = OpenAIEmbeddings()
-    store = ChromaVectorStore(embeddings=embeddings)
-    retriever = SimpleRetriever(store)
+    dense = ChromaVectorStore(embeddings=embeddings)
+    sparse = ElasticVectorStore()
+    store = CompositeVectorStore([dense, sparse])
+    retriever = HybridRetriever(dense_store=dense, sparse_store=sparse)
     llm = OpenAIChatLLM()
     return embeddings, store, retriever, llm
 
